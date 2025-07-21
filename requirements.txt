@@ -2,7 +2,3 @@ streamlit
 pandas
 openpyxl
 numpy
-BytesIO
-math
-PatternFill
-openpyxl.styles
