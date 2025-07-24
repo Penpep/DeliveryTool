@@ -1,6 +1,7 @@
 from analysis import run_analysis
 from highlight import highlight_side_lane
 from delivery_helpers import generate_times
+from summary import summary_delivery
 
 import streamlit as st
 import pandas as pd
@@ -28,10 +29,8 @@ if uploaded_file is None:
 valid_units = ['Proteus', 'Hercules', 'Megasus']
 units_to_plan = st.multiselect("Select Drive Units to plan", valid_units, default=valid_units)
 
-st.write("Max Trailer Capacity is 48 pallets")
-trailer_capacity_pallets = st.number_input(
-    "Trailer Capacity (pallets per slot)", min_value=1, value=144
-)
+st.write("Max Trailer Capacity is 48 pallets with Megasus conveyor units not being able to be stacked.")
+
 st.image("Layout.png", caption="Labeled Layout of CMA Area to go along with Excel Sheet", use_container_width=True)
 if st.button("Run Analysis & Balance Deliveries"):
 
@@ -92,56 +91,12 @@ if st.button("Run Analysis & Balance Deliveries"):
         highlight_side_lane(combined_filename, f"{unit}-Delivery", side_lane, lane)
         highlight_side_lane(combined_filename, f"{unit}-DockSpace", side_lane, lane)
 
-    # === Add balanced deliveries ===
-    delivery_dfs = []
-    for unit in units_to_plan:
-        df = pd.read_excel(combined_filename, sheet_name=f"{unit}-Delivery")
-        df['Drive Unit'] = unit
-        delivery_dfs.append(df)
-
-    combined_deliveries = pd.concat(delivery_dfs, ignore_index=True)
-    delivery_cols = [col for col in combined_deliveries.columns if 'Delivery' in col]
-
-    for col in delivery_cols:
-        combined_deliveries[col] = np.ceil(combined_deliveries[col] / combined_deliveries['Pack Size'])
-        is_box = combined_deliveries['Package Type'].str.lower() == 'box'
-        combined_deliveries.loc[is_box, col] = np.ceil(combined_deliveries.loc[is_box, col] / 8)
-
-    slot_totals = pd.Series(0, index=delivery_cols)
-    balanced_df = combined_deliveries.copy()
-
-    for idx, row in balanced_df.iterrows():
-        planned = row[delivery_cols].values.astype(int)
-        balanced = [0] * len(delivery_cols)
-
-        for i, qty in enumerate(planned):
-            available = max(trailer_capacity_pallets - slot_totals.iloc[i], 0)
-            assigned = min(qty, available)
-            balanced[i] = assigned
-            slot_totals.iloc[i] += assigned
-
-            overflow = qty - assigned
-            j = i + 1
-            while overflow > 0 and j < len(delivery_cols):
-                avail_j = max(trailer_capacity_pallets - slot_totals.iloc[j], 0)
-                assign_j = min(overflow, avail_j)
-                balanced[j] += assign_j
-                slot_totals.iloc[j] += assign_j
-                overflow -= assign_j
-                j += 1
-
-        balanced_df.loc[idx, delivery_cols] = balanced
-
-    total_row = { 'Drive Unit': 'TOTAL', 'Part Number': '', 'Package Type': '', 'Description': '', 'Pack Size': '' }
-    for col in delivery_cols:
-        total_row[col] = balanced_df[col].sum()
-    balanced_df = pd.concat([balanced_df, pd.DataFrame([total_row])], ignore_index=True)
-
-    balanced_df = balanced_df.loc[:, ~balanced_df.columns.str.contains('^Unnamed')]
+    # === Add summary deliveries ===
+    summary_df = summary_delivery(combined_filename, units_to_plan)
     with pd.ExcelWriter(combined_filename, mode='a', engine='openpyxl') as writer:
-        balanced_df.to_excel(writer, sheet_name='Balanced_Part_Deliveries', index=False)
+        summary_df.to_excel(writer, sheet_name='Summary_Deliveries', index=False)
 
-    # === Read back to memory ===
+    # === Read back to memory for download ===
     with open(combined_filename, "rb") as f:
         output_buffer = BytesIO(f.read())
 
