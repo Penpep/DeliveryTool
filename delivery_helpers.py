@@ -7,43 +7,45 @@ def generate_times(start, end, cadence):
     return [start + i * interval for i in range(cadence)]
 
 def generate_deliveries(qty, pack_size, cadence, shft_hrs, cons_rate, on_hand):
-    if cadence == 0 or cadence is None:
+    if not cadence:
         return []
 
     deliveries = []
     interval = shft_hrs / cadence
     available_on_hand = on_hand
-    total_needed_units = qty
-    total_delivered_units = 0 
+    consumed = 0
 
     for _ in range(cadence):
-    # Remaining demand for the full shift
         interval_consumption = cons_rate * interval
-        remaining_demand = max(total_needed_units - total_delivered_units - available_on_hand, 0)
 
-        if remaining_demand <= 0:
-            available_on_hand -= min(available_on_hand, interval_consumption)
-            deliveries.append(0)
-            continue
-
-    # Only consume up to remaining demand for this interval
+        # Remaining demand for the full shift
+        remaining_demand = max(qty - consumed, 0)
+        # Only consume up to remaining demand for this interval
         interval_demand = min(interval_consumption, remaining_demand)
 
+        if interval_demand <= 0:
+            deliveries.append(0)
+            continue
+        
+        # 0 delivery if enough on hand. update on hand and consumption then go next cadnece
         if available_on_hand >= interval_demand:
             available_on_hand -= interval_demand
+            consumed += interval_demand
             deliveries.append(0)
             continue
 
-    # Deliver to cover shortfall
+        # Deliver to cover shortfall (60 demand but 8 available == shortfall of 52)
         shortfall = interval_demand - available_on_hand
+        #round up pack size- never have delivery of 5 chassis for example
         packs_needed = math.ceil(shortfall / pack_size)
-        deliver_now = min(packs_needed * pack_size, remaining_demand)
+        deliver_now = packs_needed * pack_size
 
+        # append shortfall delviery and update everything 
         deliveries.append(deliver_now)
-        total_delivered_units += deliver_now
         available_on_hand += deliver_now - interval_demand
+        consumed += interval_demand
 
-    return deliveries
+    return deliveries, available_on_hand
 
 def get_dock_inventory_peaks_per_part(deliveries, pack_size, consumption_rate, total_shift_hours, 
                                       on_hand_dock, on_hand_lineside, max_lineside_qty):

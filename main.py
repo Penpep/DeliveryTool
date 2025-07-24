@@ -2,6 +2,7 @@
 from analysis import run_analysis
 from highlight import highlight_side_lane
 from delivery_helpers import generate_times
+from summary import summary_delivery
 
 import pandas as pd
 import math
@@ -94,82 +95,10 @@ if __name__ == "__main__":
         highlight_side_lane(combined_filename, f"{unit}-DockSpace", side_lane, lane)
 
 
-trailer_capacity_pallets = 96  # per slot
+trailer_capacity_pallets = 48  # per slot
 
-print(f"Balancing deliveries per part/unit with trailer capacity = {trailer_capacity_pallets} boxes per slot…")
-
-# === Read all delivery sheets and add Drive Unit column ===
-delivery_dfs = []
-for unit in units_to_plan:
-    df = pd.read_excel(combined_filename, sheet_name=f"{unit}-Delivery")
-    df['Drive Unit'] = unit  # add unit info
-    delivery_dfs.append(df)
-
-combined_deliveries = pd.concat(delivery_dfs, ignore_index=True)
-
-# Identify delivery columns
-delivery_cols = [col for col in combined_deliveries.columns if 'Delivery' in col] 
-
-# Convet delivery units to pack size 
-for col in delivery_cols:
-    combined_deliveries[col] = np.ceil(combined_deliveries[col] / combined_deliveries['Pack Size'])
-    is_box = combined_deliveries['Package Type'].str.lower() == 'box'
-    combined_deliveries.loc[is_box, col] = np.ceil(combined_deliveries.loc[is_box, col] / 8)
-
-slot_totals = pd.Series(0, index=delivery_cols)
-balanced_df = combined_deliveries.copy()
-
-# === Balance per part/unit row ===
-for idx, row in balanced_df.iterrows():
-    planned = row[delivery_cols].values.astype(int)
-    balanced = [0] * len(delivery_cols)
-
-    for i, qty in enumerate(planned):
-        # Available space in this slot
-        available = max(trailer_capacity_pallets - slot_totals.iloc[i], 0)
-
-        assigned = min(qty, available)
-        balanced[i] = assigned
-        slot_totals.iloc[i] += assigned
-
-        overflow = qty - assigned
-
-        # Push overflow to later slots
-        j = i + 1
-        while overflow > 0 and j < len(delivery_cols):
-            avail_j = max(trailer_capacity_pallets - slot_totals.iloc[j], 0)
-            assign_j = min(overflow, avail_j)
-            balanced[j] += assign_j
-            slot_totals.iloc[j] += assign_j
-            overflow -= assign_j
-            j += 1
-
-        if overflow > 0:
-            print(f"Part {row['Part Number']} ({row['Drive Unit']}) has {overflow} boxes unassigned after last slot.")
-
-    # Update balanced row
-    balanced_df.loc[idx, delivery_cols] = balanced
-
-# === Add TOTAL row ===
-total_row = {
-    'Drive Unit': 'TOTAL',
-    'Part Number': '',
-    'Package Type': '',
-    'Description': '',
-    'Pack Size': ''
-}
-
-for col in delivery_cols:
-    total_row[col] = balanced_df[col].sum()
-
-# Append total row
-balanced_df = pd.concat([
-    balanced_df,
-    pd.DataFrame([total_row])
-], ignore_index=True)
-
-# === Save to Excel ===
+summary_df = summary_delivery(combined_filename, units_to_plan)
 with pd.ExcelWriter(combined_filename, mode='a', engine='openpyxl') as writer:
-    balanced_df = balanced_df.loc[:, ~balanced_df.columns.str.contains('^Unnamed')]
-    balanced_df.to_excel(writer, sheet_name='Balanced_Part_Deliveries', index=False)
+    summary_df.to_excel(writer, sheet_name='Summary_Deliveries', index=False)
+
 

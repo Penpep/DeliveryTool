@@ -51,23 +51,20 @@ def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours
 
         overall_onhand = inventory_on_hand.get(part, row['On-hand qty']) if inventory_on_hand else row['On-hand qty']
         total_required = qty1 + qty2
-
+        
+        # print(f"{part}: SHIFT 1 CALL → qty={qty1}, pack_size={pack_size}, cadence={len(time_1)}, shift_hrs={shift_1_hours}, cons_rate={cons_1}, on_hand={overall_onhand}")
         if overall_onhand >= total_required:
             deliveries_1 = [0] * len(time_1)
             deliveries_2 = [0] * len(time_2)
             overall_onhand -= total_required
         else:
-            deliveries_1 = generate_deliveries(qty1, pack_size, len(time_1), shift_1_hours, cons_1, overall_onhand)
-            delivered_1_units = sum(deliveries_1)
-            remaining_after_s1 = max(overall_onhand + delivered_1_units - qty1, 0)
+            deliveries_1, on_hand_1 = generate_deliveries(qty1, pack_size, len(time_1), shift_1_hours, cons_1, overall_onhand)
+           
+            deliveries_2, on_hand_2 = generate_deliveries(qty2, pack_size, len(time_2), shift_2_hours, cons_2, on_hand_1)
+    
+            overall_onhand = on_hand_2
 
-            deliveries_2 = generate_deliveries(qty2, pack_size, len(time_2), shift_2_hours, cons_2, remaining_after_s1)
-            total_delivered_2 = sum(deliveries_2)
-
-            overall_onhand = max(remaining_after_s1 + total_delivered_2 - qty2, 0)
-
-        if inventory_on_hand is not None:
-            inventory_on_hand[part] = overall_onhand
+            inventory_on_hand[part] = on_hand_2
 
         delivery_plan.append([part, pkg_type, descrip, pack_size] + deliveries_1 + deliveries_2)
 
@@ -171,7 +168,7 @@ def append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_
         timeline = row.iloc[4:]
         usage_pct = (timeline / pallet_per_lane) * 100
         label = f"LANE % - {part}"
-        row_to_add = [label, pkg_type, desc, '', ''] + list(usage_pct)
+        row_to_add = [label, pkg_type, desc, ''] + list(usage_pct)
 
         # Pad/trim if needed
         if len(row_to_add) < len(df_dock_space.columns):
@@ -180,6 +177,5 @@ def append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_
             row_to_add = row_to_add[:len(df_dock_space.columns)]
 
         df_dock_space.loc[len(df_dock_space)] = row_to_add
-
+ 
     return df_dock_space
-
