@@ -1,3 +1,5 @@
+    # Extract delivery columns
+
 from analysis_helpers import get_lane_material, build_delivery_plan, build_dock_space_analysis, append_summary_rows
 
 import pandas as pd
@@ -25,8 +27,8 @@ def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_o
     side_lane_pallet = ws['D4'].value
 
     # Calculate shift hours 
-    shift_1_hours = (datetime.strptime("15:00", "%H:%M") - datetime.strptime("6:15", "%H:%M")).seconds / 3600
-    shift_2_hours = (datetime.strptime("23:15", "%H:%M") - datetime.strptime("15:00", "%H:%M")).seconds / 3600
+    shift_1_hours = (datetime.strptime("14:15", "%H:%M") - datetime.strptime("6:15", "%H:%M")).seconds / 3600
+    shift_2_hours = (datetime.strptime("23:15", "%H:%M") - datetime.strptime("15:15", "%H:%M")).seconds / 3600
 
     #  Read BOM data
     df_bom = pd.read_excel(uploaded_file, sheet_name=sheet_name, skiprows=15, header=None)
@@ -46,4 +48,5 @@ def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_o
     df_dock_space = append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_per_lane, side_lane, lane)
 
     return df_output, df_dock_space, side_lane, lane
+
 
