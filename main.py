@@ -22,9 +22,12 @@ if __name__ == "__main__":
         filetypes=[("Excel files", "*.xlsx *.xlsm")]
     )
 
+    wb = load_workbook(file_path, data_only=True)
+    print("Available sheets:", wb.sheetnames)
+
     print("Available Drive Units: Proteus, Hercules, Megasus")
     input_units = input("Enter Drive Units to plan (comma-separated, or 'all' for all units): ").strip().lower()
-    valid_units = ['Proteus', 'Hercules', 'Megasus']
+    valid_units = ['Hercules', 'Megasus', 'Proteus']
 
     if input_units == 'all':
         units_to_plan = valid_units
@@ -34,7 +37,12 @@ if __name__ == "__main__":
             if u not in valid_units:
                 raise ValueError(f"Invalid drive unit: {u}")
 
-    df_bom_init = pd.read_excel(file_path, sheet_name=f"Inbound-{valid_units[0]}", skiprows=15, header=None)
+    first_unit = units_to_plan[0]
+    try:
+        df_bom_init = pd.read_excel(file_path, sheet_name=f"Inbound-{first_unit}", skiprows=15, header=None)
+    except ValueError:
+        raise ValueError(f"Sheet 'Inbound-{first_unit}' not found in {file_path}. Check sheet names.")
+
     df_bom_init.columns = ['Part Number', 'Description', 'Quantity / Unit', 'Needed per day',
         'Quantity Needed for Shift 1', 'Quantity Needed for Shift 2',
         'Pallets Utilized for Shift 1', 'Pallets Utilized for Shift 2',
@@ -95,10 +103,7 @@ if __name__ == "__main__":
         highlight_side_lane(combined_filename, f"{unit}-DockSpace", side_lane, lane)
 
 
-trailer_capacity_pallets = 48  # per slot
 
 summary_df = summary_delivery(combined_filename, units_to_plan)
 with pd.ExcelWriter(combined_filename, mode='a', engine='openpyxl') as writer:
     summary_df.to_excel(writer, sheet_name='Summary_Deliveries', index=False)
-
-
