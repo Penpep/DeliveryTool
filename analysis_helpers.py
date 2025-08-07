@@ -8,11 +8,11 @@ import io
 def get_lane_material(input_drive_unit): 
     if input_drive_unit == 'Hercules':
         side_lane = [
-            "600-01361", "400-01256", "400-01259", "400-01260-C2",
+            "600-01361", "400-01259", "400-01260-C2",
             "600-01051", "600-01248", "600-02000", "600-02018", "600-00986"
         ]
         lane = [
-            "400-01318", "400-01950", "600-01020", "600-01035",
+            "400-01318", "400-01950",  "400-01256", "600-01020", "600-01035",
             "600-02306", "400-01226-C2", "400-01227-C2"
         ]
     elif input_drive_unit == 'Megasus':
@@ -36,7 +36,7 @@ def build_time_columns(time_1, time_2):
     columns += [f"Delivery {i+1} (S2 - {t.strftime('%I:%M %p')})" for i, t in enumerate(time_2)]
     return columns
 
-def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours, shift_2_hours):
+def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_of_lines_1, num_of_lines_2):
     delivery_plan = []
 
     for _, row in df_bom.iterrows():
@@ -46,8 +46,11 @@ def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours
         descrip = row['Description']
         qty1 = row['Quantity Needed for Shift 1']
         qty2 = row['Quantity Needed for Shift 2']
-        cons_1 = row['Consumption Rate Units/ Hour Shift 1']
-        cons_2 = row['Consumption Rate / Hour Shift 2']
+        cons_1 = row['Consumption Rate Units/ Hour Shift 1'] 
+        cons_2 = row['Consumption Rate / Hour Shift 2'] 
+        max_lineside_qty_1 = row['Maximum Storage on Lineside'] * num_of_lines_1
+        max_lineside_qty_2 = row['Maximum Storage on Lineside'] * num_of_lines_2
+
 
         overall_onhand = inventory_on_hand.get(part, row['On-hand qty']) if inventory_on_hand else row['On-hand qty']
         total_required = qty1 + qty2
@@ -58,9 +61,9 @@ def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours
             deliveries_2 = [0] * len(time_2)
             overall_onhand -= total_required
         else:
-            deliveries_1, on_hand_1 = generate_deliveries(qty1, pack_size, len(time_1), shift_1_hours, cons_1, overall_onhand)
+            deliveries_1, on_hand_1 = generate_deliveries(qty1, pack_size, len(time_1), shift_1_hours, cons_1, overall_onhand, max_lineside_qty_1)
            
-            deliveries_2, on_hand_2 = generate_deliveries(qty2, pack_size, len(time_2), shift_2_hours, cons_2, on_hand_1)
+            deliveries_2, on_hand_2 = generate_deliveries(qty2, pack_size, len(time_2), shift_2_hours, cons_2, on_hand_1, max_lineside_qty_2)
     
             overall_onhand = on_hand_2
 
@@ -73,7 +76,7 @@ def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours
     return df_output
 
 
-def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours):
+def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_of_lines_1, num_of_lines_2):
     space_records = []
 
     for _, row in df_bom.iterrows():
@@ -82,7 +85,11 @@ def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, s
         pkg_type = row['Package Type']
         cons_1 = row['Consumption Rate Units/ Hour Shift 1'] * 0.9
         cons_2 = row['Consumption Rate / Hour Shift 2'] * 0.9
-        max_lineside_qty = row['Maximum Storage on Lineside']
+        max_lineside_qty_1 = row['Maximum Storage on Lineside'] * num_of_lines_1
+        max_lineside_qty_2 = row['Maximum Storage on Lineside'] * num_of_lines_2
+        min_lineside_qty_1 = row['Minimum Storage on Lineside'] * num_of_lines_1
+        min_lineside_qty_2 = row['Minimum Storage on Lineside'] * num_of_lines_2
+
         on_hand_on_lineside = row['On-hand QTY at Lineside'] # drive unit specific 
 
 
@@ -97,12 +104,12 @@ def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, s
 
         timeline_1, lineside2, dock2 = get_dock_inventory_peaks_per_part(
             deliveries_1, pack_size, cons_1, shift_1_hours,
-            on_dock, lineside_stock, max_lineside_qty
+            on_dock, lineside_stock, max_lineside_qty_1, min_lineside_qty_1
         )
 
         timeline_2, _, final_dock = get_dock_inventory_peaks_per_part(
             deliveries_2, pack_size, cons_2, shift_2_hours,
-            dock2, lineside2, max_lineside_qty
+            dock2, lineside2, max_lineside_qty_2, min_lineside_qty_2
         )
 
         dock_on_hand[part] = final_dock 

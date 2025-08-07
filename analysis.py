@@ -26,6 +26,10 @@ def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_o
     pallet_per_lane = ws['D3'].value
     side_lane_pallet = ws['D4'].value
 
+    # Read in Number of Lines
+    num_lines_1 = ws['B9'].value
+    num_lines_2 = ws['B10'].value
+
     # Calculate shift hours 
     shift_1_hours = (datetime.strptime("14:15", "%H:%M") - datetime.strptime("6:15", "%H:%M")).seconds / 3600
     shift_2_hours = (datetime.strptime("23:15", "%H:%M") - datetime.strptime("15:15", "%H:%M")).seconds / 3600
@@ -42,9 +46,9 @@ def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_o
     ]
 
     # Generate delivery plan
-    df_output = build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours, shift_2_hours)
+    df_output = build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)
     # Build dock space analysis
-    df_dock_space = build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours)    
+    df_dock_space = build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)    
     df_dock_space = append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_per_lane, side_lane, lane)
 
     return df_output, df_dock_space, side_lane, lane
