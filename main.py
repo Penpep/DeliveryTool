@@ -48,7 +48,7 @@ if __name__ == "__main__":
         'Pallets Utilized for Shift 1', 'Pallets Utilized for Shift 2',
         'Consumption Rate Units/ Hour Shift 1', 'Consumption Rate / Hour Shift 2',
         'Standard Pack Size', 'Package Type', 'Maximum Storage on Lineside',
-        'Minimum Storage on Lineside', 'On-hand qty', 'QTY vs Shift 1', 'On-hand on dock', 'On-hand QTY at Lineside']
+        'Minimum Storage on Lineside', 'On-hand qty', 'In-Transit QTY', 'On-hand on dock', 'On-hand QTY at Lineside', 'Total Move Order - Prev Day', 'Total QTY Needed Previous Day']
     
     #Creating dictionary for inventory on hand across all units
     inventory_on_hand = {
@@ -57,6 +57,10 @@ if __name__ == "__main__":
     dock_on_hand = { 
         part:qty for part, qty in zip(df_bom_init['Part Number'], df_bom_init['On-hand on dock'])
     }
+    move_order_prev_Day = {
+        part:qty for part, qty in zip(df_bom_init['Part Number'], df_bom_init['Total Move Order - Prev Day'])
+    }
+
     # Determine Max Cadence to align deliveries per unit 
     cadence_shift_1_list = []
     cadence_shift_2_list = []
@@ -81,8 +85,8 @@ if __name__ == "__main__":
     start_shift_2 = datetime.strptime("15:00", "%H:%M")
     end_shift_2 = datetime.strptime("23:15", "%H:%M")
 
-    time_1 = generate_times(start_shift_1, end_shift_1, max_cadence_1)
-    time_2 = generate_times(start_shift_2, end_shift_2, max_cadence_2)
+    time_1 = generate_times(start_shift_1, 8, max_cadence_1)
+    time_2 = generate_times(start_shift_2, 8, max_cadence_2)
 
 
     combined_filename = "Delivery_Inventory_Plan_All.xlsx"
@@ -91,7 +95,7 @@ if __name__ == "__main__":
     with pd.ExcelWriter(combined_filename, engine='openpyxl') as writer:
         for unit in units_to_plan:
             print(f"Running analysis for {unit}...")
-            df_output, df_dock_space, side_lane, lane = run_analysis(file_path, unit, inventory_on_hand, dock_on_hand, time_1, time_2)
+            df_output, df_dock_space, side_lane, lane = run_analysis(file_path, unit, inventory_on_hand, dock_on_hand, move_order_prev_Day, time_1, time_2)
             unit_lanes[unit] = (side_lane, lane)
 
             df_output.to_excel(writer, sheet_name=f"{unit}-Delivery", index=False)
@@ -101,8 +105,6 @@ if __name__ == "__main__":
         side_lane, lane = unit_lanes[unit]
         highlight_side_lane(combined_filename, f"{unit}-Delivery", side_lane, lane)
         highlight_side_lane(combined_filename, f"{unit}-DockSpace", side_lane, lane)
-
-
 
 summary_df = summary_delivery(combined_filename, units_to_plan)
 with pd.ExcelWriter(combined_filename, mode='a', engine='openpyxl') as writer:

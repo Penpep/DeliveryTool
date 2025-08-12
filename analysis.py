@@ -1,6 +1,7 @@
     # Extract delivery columns
 
-from analysis_helpers import get_lane_material, build_delivery_plan, build_dock_space_analysis, append_summary_rows
+from analysis_helpers import build_delivery_plan, build_dock_space_analysis, append_summary_rows
+from get_lane_mat import get_lane_material
 
 import pandas as pd
 import math
@@ -9,7 +10,7 @@ from openpyxl import load_workbook
 import io
 
 
-def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_on_hand=None, time_1=None, time_2=None):
+def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_on_hand=None, move_order_prev=None, time_1=None, time_2=None):
 
     "Main function to run the analysis."
 
@@ -42,11 +43,12 @@ def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_o
         'Pallets Utilized for Shift 1', 'Pallets Utilized for Shift 2',
         'Consumption Rate Units/ Hour Shift 1', 'Consumption Rate / Hour Shift 2',
         'Standard Pack Size', 'Package Type', 'Maximum Storage on Lineside',
-        'Minimum Storage on Lineside', 'On-hand qty', 'QTY vs Shift 1', 'On-hand on dock', 'On-hand QTY at Lineside'
+        'Minimum Storage on Lineside', 'On-hand qty', 'In-Transit QTY', 'On-hand on dock', 'On-hand QTY at Lineside', 'Total Move Order - Prev Day',
+        'Total QTY Needed Previous Day'
     ]
 
     # Generate delivery plan
-    df_output = build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)
+    df_output = build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)
     # Build dock space analysis
     df_dock_space = build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)    
     df_dock_space = append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_per_lane, side_lane, lane)

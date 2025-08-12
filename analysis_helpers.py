@@ -5,30 +5,6 @@ from datetime import datetime
 from openpyxl import load_workbook
 import io
 
-def get_lane_material(input_drive_unit): 
-    if input_drive_unit == 'Hercules':
-        side_lane = [
-            "600-01361", "400-01259", "400-01260-C2",
-            "600-01051", "600-01248", "600-02000", "600-02018", "600-00986"
-        ]
-        lane = [
-            "400-01318", "400-01950",  "400-01256", "600-01020", "600-01035",
-            "600-02306", "400-01226-C2", "400-01227-C2"
-        ]
-    elif input_drive_unit == 'Megasus':
-        side_lane = [
-            "400-02833", "400-02858-C2", "400-02977-C2", "400-02978-C2",
-            "400-02970-C2", "400-02979-C2", "400-03279", "600-02018", "600-01361"\
-        ]
-        lane = [
-            "400-01226-C2", "400-01227-C2", "400-03296", "400-03632", "600-01324",
-            "600-01782", "600-02306", "600-02572", "600-02000"
-        ]
-    elif input_drive_unit == 'Proteus':
-        side_lane = ["400-03979", "420-12065", "400-03537"]
-        lane = ["400-04392", "600-03241", "600-05057", "600-05059", "400-03791", "400-03792"]
-   
-    return side_lane, lane 
 
 def build_time_columns(time_1, time_2):
     columns = ['Part Number', 'Package Type', 'Description', 'Pack Size']
@@ -36,7 +12,7 @@ def build_time_columns(time_1, time_2):
     columns += [f"Delivery {i+1} (S2 - {t.strftime('%I:%M %p')})" for i, t in enumerate(time_2)]
     return columns
 
-def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_of_lines_1, num_of_lines_2):
+def build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time_2, shift_1_hours, shift_2_hours, num_of_lines_1, num_of_lines_2):
     delivery_plan = []
 
     for _, row in df_bom.iterrows():
@@ -46,35 +22,43 @@ def build_delivery_plan(df_bom, inventory_on_hand, time_1, time_2, shift_1_hours
         descrip = row['Description']
         qty1 = row['Quantity Needed for Shift 1']
         qty2 = row['Quantity Needed for Shift 2']
-        cons_1 = row['Consumption Rate Units/ Hour Shift 1'] 
-        cons_2 = row['Consumption Rate / Hour Shift 2'] 
-        max_lineside_qty_1 = row['Maximum Storage on Lineside'] * num_of_lines_1
-        max_lineside_qty_2 = row['Maximum Storage on Lineside'] * num_of_lines_2
+        cons_1 = row['Consumption Rate Units/ Hour Shift 1']
+        cons_2 = row['Consumption Rate / Hour Shift 2']
+        move_order_prev_Day = row['Total Move Order - Prev Day'] 
+        total_qty_needed_previous_Day= row['Total QTY Needed Previous Day']
 
+        # === Get current inventory for this part ===
+        on_hand_qty = inventory_on_hand.get(part, row['On-hand qty'])
+        # === Get MO qty from previous day === 
+        move_order_prev_Day = move_order_prev.get(part, row['Total Move Order - Prev Day'])
 
-        overall_onhand = inventory_on_hand.get(part, row['On-hand qty']) if inventory_on_hand else row['On-hand qty']
-        total_required = qty1 + qty2
+        # === Calculate available qty before shift 1 ===
         
-        # print(f"{part}: SHIFT 1 CALL → qty={qty1}, pack_size={pack_size}, cadence={len(time_1)}, shift_hrs={shift_1_hours}, cons_rate={cons_1}, on_hand={overall_onhand}")
-        if overall_onhand >= total_required:
-            deliveries_1 = [0] * len(time_1)
-            deliveries_2 = [0] * len(time_2)
-            overall_onhand -= total_required
-        else:
-            deliveries_1, on_hand_1 = generate_deliveries(qty1, pack_size, len(time_1), shift_1_hours, cons_1, overall_onhand, max_lineside_qty_1)
-           
-            deliveries_2, on_hand_2 = generate_deliveries(qty2, pack_size, len(time_2), shift_2_hours, cons_2, on_hand_1, max_lineside_qty_2)
-    
-            overall_onhand = on_hand_2
+        available_on_hand_shift1 = on_hand_qty + move_order_prev_Day - total_qty_needed_previous_Day if move_order_prev_Day != 0 else on_hand_qty
 
-            inventory_on_hand[part] = on_hand_2
+        # === Generate shift 1 deliveries ===
+        deliveries_1, on_hand_after_1 = generate_deliveries(
+            qty1, pack_size, len(time_1), shift_1_hours, cons_1,
+            available_on_hand_shift1
+        )
 
+        # === Generate shift 2 deliveries ===
+        deliveries_2, on_hand_after_2 = generate_deliveries(
+            qty2, pack_size, len(time_2), shift_2_hours, cons_2,
+            on_hand_after_1
+        )
+
+        # === Update inventory tracking ===
+        inventory_on_hand[part] = on_hand_after_2
+        # maybe update move_order_prev_Day to 0 to avoid double counting for duplicate BOM parts 
+        move_order_prev[part] = 0 
+
+        # === Record output row ===
         delivery_plan.append([part, pkg_type, descrip, pack_size] + deliveries_1 + deliveries_2)
 
     columns = build_time_columns(time_1, time_2)
     df_output = pd.DataFrame(delivery_plan, columns=columns)
     return df_output
-
 
 def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_of_lines_1, num_of_lines_2):
     space_records = []
@@ -184,5 +168,10 @@ def append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_
             row_to_add = row_to_add[:len(df_dock_space.columns)]
 
         df_dock_space.loc[len(df_dock_space)] = row_to_add
- 
+
+    total_pallet_space = side_lane_pallet + pallet_per_lane * 12
+    interval_pallet_usage = round((pallet_sums / total_pallet_space) * 100, 2)
+
+    df_dock_space.loc[len(df_dock_space)] = ['TOTAL PALLET % USAGE', '', '', ''] + list(interval_pallet_usage)
+
     return df_dock_space
