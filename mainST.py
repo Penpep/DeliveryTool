@@ -31,6 +31,8 @@ units_to_plan = st.multiselect("Select Drive Units to plan", valid_units, defaul
 
 st.write("Max Trailer Capacity is 48 pallets with Megasus conveyor units not being able to be stacked.")
 
+st.write("Deliveries will have a 15 percent safety stock buffer applied to the total quantity needed for each part.")
+
 st.image("Layout.png", caption="Labeled Layout of CMA Area to go along with Excel Sheet", use_container_width=True)
 if st.button("Run Analysis & Balance Deliveries"):
 
