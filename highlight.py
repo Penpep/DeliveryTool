@@ -28,7 +28,7 @@ def add_color_key_to_side(ws):
         cell_color.fill = fill
 
 #   Styling Helper Functions 
-def highlight_side_lane(file_name, sheet_name, side_lane, lane):
+def highlight_side_lane(file_name, sheet_name, side_lane, lane, rack):
     wb = load_workbook(file_name)
     ws = wb[sheet_name]
 
@@ -56,7 +56,7 @@ def highlight_side_lane(file_name, sheet_name, side_lane, lane):
         elif "TOTAL - BOX" in part_value or "TOTAL - PALLET" in part_value:
             for cell in row: 
                 cell.fill  = sand_green_fill
-        elif pkg_type_value == "Box":
+        elif part_value in rack or "PALLET RACK % Usage" in part_value or "TOTAL - RACK BOXES" in part_value:
             for cell in row:
                 cell.fill = sand_gray_fill
     

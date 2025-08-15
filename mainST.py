@@ -81,17 +81,17 @@ if st.button("Run Analysis & Balance Deliveries"):
     # === Write initial Excel to disk ===
     with pd.ExcelWriter(combined_filename, engine='openpyxl') as writer:
         for unit in units_to_plan:
-            df_output, df_dock_space, side_lane, lane = run_analysis(uploaded_file, unit, inventory_on_hand, dock_on_hand, move_order_prev_Day, time_1, time_2)
-            unit_lanes[unit] = (side_lane, lane)
+            df_output, df_dock_space, side_lane, lane, rack = run_analysis(uploaded_file, unit, inventory_on_hand, dock_on_hand, move_order_prev_Day, time_1, time_2)
+            unit_lanes[unit] = (side_lane, lane, rack)
 
             df_output.to_excel(writer, sheet_name=f"{unit}-Delivery", index=False)
             df_dock_space.to_excel(writer, sheet_name=f"{unit}-DockSpace", index=False)
 
     # === Apply highlights ===
     for unit in units_to_plan:
-        side_lane, lane = unit_lanes[unit]
-        highlight_side_lane(combined_filename, f"{unit}-Delivery", side_lane, lane)
-        highlight_side_lane(combined_filename, f"{unit}-DockSpace", side_lane, lane)
+        side_lane, lane, rack = unit_lanes[unit]
+        highlight_side_lane(combined_filename, f"{unit}-Delivery", side_lane, lane, rack)
+        highlight_side_lane(combined_filename, f"{unit}-DockSpace", side_lane, lane, rack)
 
     # === Add summary deliveries ===
     summary_df = summary_delivery(combined_filename, units_to_plan)

@@ -12,7 +12,7 @@ def build_time_columns(time_1, time_2):
     columns += [f"Delivery {i+1} (S2 - {t.strftime('%I:%M %p')})" for i, t in enumerate(time_2)]
     return columns
 
-def build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time_2, shift_1_hours, shift_2_hours, num_of_lines_1, num_of_lines_2):
+def build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time_2, shift_1_hours, shift_2_hours, buffer_rate):
     delivery_plan = []
 
     for _, row in df_bom.iterrows():
@@ -39,13 +39,13 @@ def build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time
         # === Generate shift 1 deliveries ===
         deliveries_1, on_hand_after_1 = generate_deliveries(
             qty1, pack_size, len(time_1), shift_1_hours, cons_1,
-            available_on_hand_shift1
+            available_on_hand_shift1, buffer_rate
         )
 
         # === Generate shift 2 deliveries ===
         deliveries_2, on_hand_after_2 = generate_deliveries(
             qty2, pack_size, len(time_2), shift_2_hours, cons_2,
-            on_hand_after_1
+            on_hand_after_1, buffer_rate
         )
 
         # === Update inventory tracking ===
@@ -58,6 +58,7 @@ def build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time
 
     columns = build_time_columns(time_1, time_2)
     df_output = pd.DataFrame(delivery_plan, columns=columns)
+    df_output = df_output.groupby(['Part Number', 'Package Type', 'Description', 'Pack Size'], as_index=False).sum(numeric_only=True)
     return df_output
 
 def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_of_lines_1, num_of_lines_2):
@@ -83,8 +84,8 @@ def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, s
 
     # Get delivery rows explicitly by Part Number
         df_row = df_output[df_output['Part Number'] == part]
-        deliveries_1 = df_row.loc[:, df_output.columns.str.contains(r"S1 -")].iloc[0].tolist()
-        deliveries_2 = df_row.loc[:, df_output.columns.str.contains(r"S2 -")].iloc[0].tolist()
+        deliveries_1 = df_row.loc[:, df_output.columns.str.contains(r"S1 -")].sum().tolist()
+        deliveries_2 = df_row.loc[:, df_output.columns.str.contains(r"S2 -")].sum().tolist()
 
         timeline_1, lineside2, dock2 = get_dock_inventory_peaks_per_part(
             deliveries_1, pack_size, cons_1, shift_1_hours,
@@ -133,7 +134,7 @@ def build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, s
     df_dock_space = pd.DataFrame(flat_records).fillna(0) 
     return df_dock_space
 
-def append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_per_lane, side_lane, lane):
+def append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_per_lane, side_lane, lane, rack):
 
     df_boxes = df_dock_space[df_dock_space['Package Type'] == 'Box']
     df_pallets = df_dock_space[df_dock_space['Package Type'] == 'Pallet']
@@ -143,14 +144,29 @@ def append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_
 
     df_dock_space.loc[len(df_dock_space)] = ['TOTAL - BOX', 'Box', '', ''] + list(box_sums)
     df_dock_space.loc[len(df_dock_space)] = ['TOTAL - PALLET', 'Pallet', '', ''] + list(pallet_sums)
-    df_dock_space.loc[len(df_dock_space)] = ['Box % Usage', 'Box', '', ''] + list(((box_sums / box_dock_space) * 100).round(2))
 
-    side_df = df_dock_space[df_dock_space['Part Number'].isin(side_lane)]
+    # --- RACK ---
+    rack_df = df_dock_space[df_dock_space['Part Number'].isin(rack)]
+    rack_sums = rack_df.iloc[:, 4:].sum()
+    df_dock_space.loc[len(df_dock_space)] = ['TOTAL - RACK BOXES', '', '', ''] + list(rack_sums)
+    df_dock_space.loc[len(df_dock_space)] = ['PALLET RACK % Usage', '', '', ''] + list(((rack_sums / box_dock_space) * 100).round(2))
+    df_dock_space.loc[len(df_dock_space)] = pd.Series(dtype=object)
+    
+   # --- SIDE LANE ---
+    side_df = df_dock_space[df_dock_space['Part Number'].isin(side_lane)].copy()
+
+    # Convert boxes to pallet spots
+    for part in side_lane:
+        mask = df_dock_space['Part Number'] == part
+        for col in df_dock_space.columns[4:]:
+            df_dock_space.loc[mask, col] = df_dock_space.loc[mask, col].apply(lambda x: 1 if 0 < x <= 60 else math.ceil(x / 60))
+
+    # Sum pallets for side lane
     side_sums = side_df.iloc[:, 4:].sum()
-    df_dock_space.loc[len(df_dock_space)] = ['TOTAL - SIDE LANE', '', '', ''] + list(side_sums)
     df_dock_space.loc[len(df_dock_space)] = ['SIDE LANE % Usage', '', '', ''] + list(((side_sums / side_lane_pallet) * 100).round(2))
     df_dock_space.loc[len(df_dock_space)] = pd.Series(dtype=object)
 
+    # --- LANE ----
     lane_df = df_dock_space[df_dock_space['Part Number'].isin(lane)].copy()
     for idx, row in lane_df.iterrows():
         part = row['Part Number']
@@ -168,8 +184,10 @@ def append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_
             row_to_add = row_to_add[:len(df_dock_space.columns)]
 
         df_dock_space.loc[len(df_dock_space)] = row_to_add
-
-    total_pallet_space = side_lane_pallet + pallet_per_lane * 12
+    
+    # --- Add total pallet usage----
+    MRB_total_pallet_space = 25 #CHANGE THIS
+    total_pallet_space = side_lane_pallet + pallet_per_lane * 12 + MRB_total_pallet_space
     interval_pallet_usage = round((pallet_sums / total_pallet_space) * 100, 2)
 
     df_dock_space.loc[len(df_dock_space)] = ['TOTAL PALLET % USAGE', '', '', ''] + list(interval_pallet_usage)

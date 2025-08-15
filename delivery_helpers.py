@@ -1,5 +1,5 @@
 import math
-from get_lane_mat import get_lane_material
+from drive_specifics import get_lane_material
 from datetime import datetime, timedelta
 
 def generate_times(start, shift_hours, cadence):
@@ -10,7 +10,7 @@ def generate_times(start, shift_hours, cadence):
 
     return [start + timedelta(hours=interval * i) for i in range(cadence)]
 
-def generate_deliveries(qty, pack_size, cadence, shft_hrs, cons_rate, available_on_hand):
+def generate_deliveries(qty, pack_size, cadence, shft_hrs, cons_rate, available_on_hand, buffer_rate):
     if not cadence:
         return [], available_on_hand
 
@@ -18,8 +18,10 @@ def generate_deliveries(qty, pack_size, cadence, shft_hrs, cons_rate, available_
     interval = shft_hrs / cadence
     consumed = 0
 
-    qty = qty * 1.15 #15 percent buffer -> just increase the demand by 15 percent
-    cons_rate = cons_rate * 1.15 #15 percent buffer -> just increase the consumption rate by 15 percent
+    qty = qty * buffer_rate #15 percent buffer -> just increase the demand by 15 percent
+    cons_rate = cons_rate * buffer_rate #15 percent buffer -> just increase the consumption rate by 15 percent
+
+    #This is for checking NUMBERS!!! only will see in terminal on VSCODE
     print(f"Generating deliveries for qty: {qty}, pack_size: {pack_size}, cadence: {cadence}, shift_hours: {shft_hrs}, consumption_rate: {cons_rate}, available_on_hand: {available_on_hand}")
 
     for _ in range(cadence):

@@ -1,7 +1,7 @@
     # Extract delivery columns
 
 from analysis_helpers import build_delivery_plan, build_dock_space_analysis, append_summary_rows
-from get_lane_mat import get_lane_material
+from drive_specifics import get_lane_material, get_drive_unit_buffer_rate
 
 import pandas as pd
 import math
@@ -20,7 +20,8 @@ def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_o
     ws = wb[sheet_name] 
 
     #Get side lane and lane material 
-    side_lane, lane = get_lane_material(input_drive_unit)
+    side_lane, lane, rack = get_lane_material(input_drive_unit)
+    buffer_rate = get_drive_unit_buffer_rate(input_drive_unit)
 
     # Read Dock Parameters
     box_dock_space = ws['D2'].value
@@ -48,11 +49,15 @@ def run_analysis(uploaded_file, input_drive_unit, inventory_on_hand=None, dock_o
     ]
 
     # Generate delivery plan
-    df_output = build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)
+    df_output = build_delivery_plan(df_bom, inventory_on_hand, move_order_prev, time_1, time_2, shift_1_hours, shift_2_hours, buffer_rate)
     # Build dock space analysis
-    df_dock_space = build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)    
-    df_dock_space = append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_per_lane, side_lane, lane)
+    df_dock_space = build_dock_space_analysis(df_bom, df_output, dock_on_hand, time_1, time_2, shift_1_hours, shift_2_hours, num_lines_1, num_lines_2)   
+    df_dock_space['Part Number'] = df_dock_space['Part Number'].astype(str).str.strip()
+    side_lane = [str(x).strip() for x in side_lane]
+    lane = [str(x).strip() for x in lane]
+    rack = [str(x).strip() for x in rack] 
+    df_dock_space = append_summary_rows(df_dock_space, box_dock_space, side_lane_pallet, pallet_per_lane, side_lane, lane, rack)
 
-    return df_output, df_dock_space, side_lane, lane
+    return df_output, df_dock_space, side_lane, lane, rack
 
 
